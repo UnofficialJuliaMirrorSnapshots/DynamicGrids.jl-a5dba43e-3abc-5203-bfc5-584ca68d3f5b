@@ -1,3 +1,38 @@
+"""
+Graphic outputs that display frames as RGB24 images.
+"""
+abstract type AbstractImageOutput{T} <: AbstractGraphicOutput{T} end
+
+(::Type{F})(o::T; kwargs...) where F <: AbstractImageOutput where T <: AbstractImageOutput =
+    F(; frames=frames(o), starttime=starttime(o), endtime=endtime(o), 
+      fps=fps(o), showfps=showfps(o), timestamp=timestamp(o), stampframe=stampframe(o), store=store(o),
+      processor=processor(o), minval=minval(o), maxval=maxval(o),
+      kwargs...)
+
+"""
+Mixin for outputs that output images and can use an image processor.
+"""
+@premix @default_kw struct Image{P,Mi,Ma}
+    processor::P | ColorProcessor()
+    minval::Mi   | 0.0
+    maxval::Ma   | 1.0
+end
+
+processor(o::AbstractImageOutput) = o.processor
+minval(o::AbstractImageOutput) = o.minval
+maxval(o::AbstractImageOutput) = o.maxval
+
+
+showframe(frame, o::AbstractImageOutput, data::AbstractSimData, f) = 
+    showframe(frame, o, ruleset(data), f)
+showframe(frame, o::AbstractImageOutput, ruleset::AbstractRuleset, f) =
+    showframe(frametoimage(o, ruleset, frame, f), o, f)
+
+# Manual showframe without data/ruleset
+showframe(o::AbstractImageOutput, f=lastindex(o)) = showframe(o[f], o::AbstractImageOutput, f) 
+showframe(frame, o::AbstractImageOutput, f) =
+    showframe(frametoimage(o, normaliseframe(o, frame), f), o::AbstractOutput, f)
+
 
 """
 Default colorscheme. Better performance than using a Colorschemes.jl scheme.
@@ -24,9 +59,10 @@ Convert frame matrix to RGB24, using an AbstractFrameProcessor
 """
 function frametoimage end
 
-@inline frametoimage(o::AbstractImageOutput, args...) = frametoimage(processor(o), o, args...)
-frametoimage(o::AbstractImageOutput, i::Integer) = frametoimage(processor(o), o, Ruleset(), o[i], i)
-frametoimage(o::AbstractImageOutput, i::Integer) = frametoimage(processor(o), o, Ruleset(), o[i], i)
+frametoimage(o::AbstractImageOutput, i::Integer) = frametoimage(o, o[i], i)
+frametoimage(o::AbstractImageOutput, frame::AbstractArray, i::Integer) = 
+    frametoimage(processor(o), o, Ruleset(), o[i], i)
+frametoimage(o::AbstractImageOutput, args...) = frametoimage(processor(o), o, args...)
 
 """"
 Converts output frames to a colorsheme.
@@ -84,3 +120,19 @@ savegif(filename::String, o::AbstractOutput, ruleset::AbstractRuleset=Ruleset();
     array = cat(images..., dims=3)
     FileIO.save(filename, array; kwargs...)
 end
+
+
+struct HasMinMax end
+struct NoMinMax end
+
+hasminmax(output::T) where T = (:minval in fieldnames(T)) ? HasMinMax() : NoMinMax()
+
+normaliseframe(output::AbstractOutput, a::AbstractArray) = 
+    normaliseframe(hasminmax(output), output, a)
+normaliseframe(::HasMinMax, output, a::AbstractArray) =
+    normaliseframe(a, minval(output), maxval(output))
+normaliseframe(a::AbstractArray, minval::Number, maxval::Number) = normalise.(a, minval, maxval)
+normaliseframe(a::AbstractArray, minval, maxval) = a
+normaliseframe(::NoMinMax, output, a::AbstractArray) = a
+
+normalise(x::Number, minval::Number, maxval::Number) = min((x - minval) / (maxval - minval), oneunit(eltype(x)))
