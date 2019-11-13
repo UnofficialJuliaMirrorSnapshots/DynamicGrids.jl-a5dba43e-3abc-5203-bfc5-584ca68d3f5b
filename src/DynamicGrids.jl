@@ -4,13 +4,14 @@ module DynamicGrids
     path = joinpath(dirname(@__DIR__), "README.md")
     include_dependency(path)
     # Use [`XX`](@ref) in the docs but not the readme
-    replace(read(path, String), r"`(\w+\w)`" => s"[`\1`](@ref)")
+    text = replace(read(path, String), r"`(\w+\w)`" => s"[`\1`](@ref)")
     # Use doctests
-    replace(read(path, String), "```julia" => "```jldoctest")
+    replace(text, "```julia" => "```jldoctest")
 end DynamicGrids
 
 using Colors,
       ColorSchemes,
+      ConstructionBase,
       Crayons,
       DocStringExtensions,
       FieldDefaults,
@@ -39,28 +40,28 @@ export savegif, show_frame, ruletypes
 
 export distances, broadcastable_indices, sizefromradius
 
-export AbstractSimData, SimData
+export AbstractSimData, SimData, MultiSimData
 
-export AbstractRule, AbstractPartialRule,
-       AbstractNeighborhoodRule, AbstractPartialNeighborhoodRule,
-       AbstractCellRule
+export Rule, PartialRule, NeighborhoodRule, PartialNeighborhoodRule, CellRule, Chain
 
-export AbstractRuleset, Ruleset, Chain
+export Interaction, NeighborhoodInteraction, CellInteraction,
+       PartialInteraction, PartialNeighborhoodInteraction
 
-export AbstractLife, Life
+export AbstractRuleset, Ruleset, MultiRuleset
 
-export AbstractNeighborhood, RadialNeighborhood, AbstractCustomNeighborhood,
-       CustomNeighborhood, LayeredCustomNeighborhood, VonNeumannNeighborhood
+export Life
+
+export Neighborhood, AbstractRadialNeighborhood, RadialNeighborhood, 
+       AbstractCustomNeighborhood, CustomNeighborhood, LayeredCustomNeighborhood, 
+       VonNeumannNeighborhood
 
 export RemoveOverflow, WrapOverflow
 
-export AbstractOutput, AbstractGraphicOutput, AbstractImageOutput, AbstractArrayOutput, ArrayOutput, REPLOutput
+export Output, GraphicOutput, ImageOutput, ArrayOutput, REPLOutput
 
-export AbstractFrameProcessor, ColorProcessor, Greyscale, Grayscale
+export FrameProcessor, ColorProcessor, Greyscale, Grayscale
 
-export AbstractCharStyle, Block, Braile
-
-export AbstractSummary
+export CharStyle, Block, Braile
 
 
 const FIELDDOCTABLE = FieldDocTable((:Description, :Default, :Limits),
@@ -75,6 +76,7 @@ const FIELDDOCTABLE = FieldDocTable((:Description, :Default, :Limits),
     """
 
 include("rules.jl")
+include("interactions.jl")
 include("chain.jl")
 include("rulesets.jl")
 include("simulationdata.jl")
@@ -85,7 +87,9 @@ include("outputs/array.jl")
 include("outputs/repl.jl")
 include("interface.jl")
 include("framework.jl")
+include("sequencerules.jl")
 include("maprules.jl")
+include("mapinteractions.jl")
 include("neighborhoods.jl")
 include("utils.jl")
 include("life.jl")

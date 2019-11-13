@@ -2,7 +2,7 @@
 Apply the rule for each cell in the grid, using optimisations
 allowed for the supertype of the rule.
 """
-maprule!(data::AbstractSimData, rule::AbstractRule) = blockrun!(data, rule)
+maprule!(data::AbstractSimData, rule::Rule) = blockrun!(data, rule)
 
 blockrun!(data, context, args...) = begin
     nrows, ncols = framesize(data)
@@ -36,14 +36,14 @@ blockrun!(data, context, args...) = begin
     end
 end
 
-@inline blockdo!(data, rule::AbstractRule, I) = begin
+@inline blockdo!(data, rule::Rule, I) = begin
     @inbounds state = source(data)[I...]
     @inbounds dest(data)[I...] = applyrule(rule, data, state, I)
     nothing
 end
 
 
-maprule!(data::AbstractSimData, rule::AbstractPartialRule) = begin
+maprule!(data::AbstractSimData, rule::PartialRule) = begin
     data = WritableSimData(data)
     # Update active blocks in the dest array
     @inbounds parent(dest(data)) .= parent(source(data))
@@ -52,27 +52,26 @@ maprule!(data::AbstractSimData, rule::AbstractPartialRule) = begin
     updatestatus!(sourcestatus(data), deststatus(data))
 end
 
-@inline blockdo!(data::WritableSimData, rule::AbstractPartialRule, I) = begin
+@inline blockdo!(data::WritableSimData, rule::PartialRule, I) = begin
     state = source(data)[I...]
     state == zero(state) && return
     applyrule!(rule, data, state, I)
 end
 
-
-struct UpdateDest end
-@inline blockdo!(data::WritableSimData, ::UpdateDest, I) = begin
-    out = source(data)[I...]
-    dest(data)[I...] = out
-end
+# struct UpdateDest end
+# @inline blockdo!(data::WritableSimData, ::UpdateDest, I) = begin
+    # out = source(data)[I...]
+    # dest(data)[I...] = out
+# end
 
 """
 Run the rule for all cells, writing the result to the dest array
 The neighborhood is copied to the rules neighborhood buffer array for performance
 # TODO test 1d
 """
-# maprule!(data::AbstractSimData{T,1}, rule::Union{AbstractNeighborhoodRule, Tuple{AbstractNeighborhoodRule,Vararg}},
+# maprule!(data::AbstractSimData{T,1}, rule::Union{NeighborhoodRule, Tuple{NeighborhoodRule,Vararg}},
 #           args...)  where T = begin
-#     # The rule provides the neighborhood buffer
+#     # The rule provides the neighborfdood buffer
 #     r = radius(data)
 #     sze = hoodsize(r)
 #     buf = similar(init(data), sze, sze)
@@ -93,7 +92,7 @@ The neighborhood is copied to the rules neighborhood buffer array for performanc
 #     end
 # end
 
-maprule!(data::AbstractSimData{T,2}, rule::Union{AbstractNeighborhoodRule,Chain{<:Tuple{AbstractNeighborhoodRule,Vararg}}}, 
+maprule!(data::SingleSimData{T,2}, rule::Union{NeighborhoodRule,Chain{<:Tuple{NeighborhoodRule,Vararg}}}, 
          args...) where T = begin
     # The rule provides the neighborhood buffer
     r = radius(rule)
@@ -106,12 +105,12 @@ maprule!(data::AbstractSimData{T,2}, rule::Union{AbstractNeighborhoodRule,Chain{
     nrows, ncols = framesize(data)
 
     handleoverflow!(data, r)
-    # Use the simplest number type at or above eltype(src) that can be added
+    # Center of the buffer for both axes
     center = r + 1
     deststatus(data) .= false
 
     # Run the rule row by row. When we move along a row by one cell, we access only
-    # a single new column of data same the hight of the nighborhood, and move the existing
+    # a single new column of data the same hight of the nighborhood, and move the existing
     # data in the neighborhood buffer array accross by one column. This saves on reads
     # from the main array, and focusses reads and writes in the small buffer array that
     # should be in fast local memory.
@@ -207,13 +206,13 @@ end
 Wrap overflow where required. This optimisation allows us to ignore
 bounds checks on neighborhoods and still use a wraparound grid.
 """
-handleoverflow!(data::AbstractSimData, r::Integer) = handleoverflow!(data, overflow(data), r)
-handleoverflow!(data::AbstractSimData{T,1}, overflow::WrapOverflow, r::Integer) where T = begin
+handleoverflow!(data::SingleSimData, r::Integer) = handleoverflow!(data, overflow(data), r)
+handleoverflow!(data::SingleSimData{T,1}, overflow::WrapOverflow, r::Integer) where T = begin
     # Copy two sides
     @inbounds copyto!(source, 1-r:0, source, nrows+1-r:nrows)
     @inbounds copyto!(source, nrows+1:nrows+r, source, 1:r)
 end
-handleoverflow!(data::AbstractSimData{T,2}, overflow::WrapOverflow, r::Integer) where T = begin
+handleoverflow!(data::SingleSimData{T,2}, overflow::WrapOverflow, r::Integer) where T = begin
     # TODO optimise this. Its mostly a placeholder so wrapping still works in GOL tests.
     src = source(data)
     nrows, ncols = framesize(data)
@@ -256,7 +255,8 @@ handleoverflow!(data, overflow::RemoveOverflow, r) = nothing
 combinestatus(x::Number, y::Number) = x + y
 combinestatus(x::Integer, y::Integer) = x | y
 
-updatestatus!(copyto::AbstractArray, copyfrom::AbstractArray) = @inbounds copyto .= copyfrom
+updatestatus!(copyto::AbstractArray, copyfrom::AbstractArray) = 
+    @inbounds copyto .= copyfrom
 updatestatus!(copyto, copyfrom) = nothing
 
 
@@ -266,9 +266,9 @@ updatestatus!(copyto, copyfrom) = nothing
 Chained rules. If a `Chain` of rules is passed to applyrule, run them sequentially for each 
 cell.  This can have much beter performance as no writes occur between rules, and they are
 essentially compiled together into compound rules. This gives correct results only for
-AbstractCellRule, or for a single AbstractNeighborhoodRule followed by AbstractCellRule.
+CellRule, or for a single NeighborhoodRule followed by CellRule.
 """
-@inline applyrule(rules::Chain{<:Tuple{<:AbstractNeighborhoodRule,Vararg}}, data, state, index, buf) = begin
+@inline applyrule(rules::Chain{<:Tuple{<:NeighborhoodRule,Vararg}}, data, state, index, buf) = begin
     state = applyrule(rules[1], data, state, index, buf)
     applyrule(tail(rules), data, state, index)
 end
